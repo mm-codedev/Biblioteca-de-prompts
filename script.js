@@ -120,16 +120,62 @@ function openColorPopover(tag, anchorEl) {
 
     colorInput.addEventListener('input', onChange);
 
+    // Add a small palette of preset colors (quick picks)
+    const palette = ['#f97316','#fb7185','#f472b6','#a78bfa','#60a5fa','#34d399','#facc15','#f87171','#fb923c'];
+    const paletteWrap = document.createElement('div');
+    paletteWrap.className = 'color-palette';
+    palette.forEach(c => {
+        const p = document.createElement('button');
+        p.className = 'color-preset';
+        p.style.background = c;
+        p.title = c;
+        p.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            if (!app.colors) app.colors = {};
+            app.colors[tag] = c;
+            saveData();
+            closeColorPopover();
+            showToast(`Color de "${tag}" actualizado`);
+        });
+        paletteWrap.appendChild(p);
+    });
+
+    _colorPopoverEl.appendChild(paletteWrap);
+    // Reset button (undo custom color)
+    const resetBtn = document.createElement('button');
+    resetBtn.className = 'color-reset-btn';
+    resetBtn.type = 'button';
+    resetBtn.textContent = 'Restablecer';
+    resetBtn.title = 'Restablecer color por defecto';
+    resetBtn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        if (app.colors && Object.prototype.hasOwnProperty.call(app.colors, tag)) {
+            delete app.colors[tag];
+            saveData();
+        }
+        closeColorPopover();
+        showToast(`Color de "${tag}" restablecido`);
+    });
+
+    _colorPopoverEl.appendChild(resetBtn);
     _colorPopoverEl.appendChild(colorInput);
     document.body.appendChild(_colorPopoverEl);
 
     // Positioning: place to the right of anchorEl
     const rect = anchorEl.getBoundingClientRect();
-    const popRect = _colorPopoverEl.getBoundingClientRect();
-    const left = Math.min(window.innerWidth - 220, rect.right + 8);
-    const top = Math.max(8, rect.top - 8);
-    _colorPopoverEl.style.left = `${left}px`;
-    _colorPopoverEl.style.top = `${top}px`;
+    // If mobile narrow screen, show full-width near top/below anchor
+    if (window.innerWidth <= 768) {
+        _colorPopoverEl.style.left = `12px`;
+        _colorPopoverEl.style.width = `calc(100% - 24px)`;
+        // place centered vertically near anchor
+        const top = Math.max(12, rect.bottom + 6);
+        _colorPopoverEl.style.top = `${top}px`;
+    } else {
+        const left = Math.min(window.innerWidth - 220, rect.right + 8);
+        const top = Math.max(8, rect.top - 8);
+        _colorPopoverEl.style.left = `${left}px`;
+        _colorPopoverEl.style.top = `${top}px`;
+    }
 
     // Close on outside click or Escape
     setTimeout(() => {
@@ -1244,7 +1290,27 @@ function showConfirm(message, title = 'Confirmar') {
 function showAlert(message, title = 'Aviso') {
     return new Promise(resolve => {
         const modal = document.getElementById('confirm-modal');
-        if (!modal) { alert((title ? title + '\n\n' : '') + message); return resolve(); }
+        if (!modal) {
+            // Create a temporary alert modal (no dependency on existing DOM)
+            console.warn('showAlert fallback (creating temp modal):', title, message);
+            const tmp = document.createElement('div');
+            tmp.className = 'modal-overlay open';
+            tmp.style.zIndex = 6000;
+            tmp.innerHTML = `
+                <div class="modal-card small">
+                    <div class="modal-header"><h3>${escapeHtml(title)}</h3></div>
+                    <div class="modal-body"><p style="white-space:pre-wrap">${escapeHtml(message)}</p></div>
+                    <div class="modal-footer" style="justify-content:flex-end"><button class="btn-primary" id="tmp-alert-ok">OK</button></div>
+                </div>`;
+            document.body.appendChild(tmp);
+            const ok = document.getElementById('tmp-alert-ok');
+            const cleanupTmp = () => { try { tmp.remove(); } catch (e) {} ; resolve(); };
+            ok.addEventListener('click', cleanupTmp, { once: true });
+            // allow Escape to close
+            const esc = (e) => { if (e.key === 'Escape') { cleanupTmp(); document.removeEventListener('keydown', esc); } };
+            document.addEventListener('keydown', esc);
+            return;
+        }
         const ok = document.getElementById('confirm-ok');
         const cancel = document.getElementById('confirm-cancel');
         const titleEl = document.getElementById('confirm-title');

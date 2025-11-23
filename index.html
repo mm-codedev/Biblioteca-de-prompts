@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://accounts.google.com https://www.googleapis.com; connect-src 'self' https://www.googleapis.com https://oauth2.googleapis.com https://accounts.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:;">
+    <title>Prompt Manager Pro V9.11 [Secure]</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght+400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+
+    <div class="app-layout">
+        <div id="sidebar-overlay"></div>
+
+        <aside class="sidebar" id="app-sidebar">
+            <div class="sidebar-header">
+                <h2>Biblioteca</h2>
+                <button id="btn-close-sidebar-mobile" class="icon-btn mobile-only">✕</button>
+            </div>
+
+            <div class="nav-section-wrapper">
+                <div class="sidebar-section-head"><span class="section-label">Vistas</span></div>
+                <div style="padding: 0 12px; display:flex; flex-direction:column; gap:4px;">
+                    <div class="folder-item" id="nav-all">
+                        <div class="folder-left">
+                            <svg class="folder-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+                            <span class="folder-name">Todos</span>
+                        </div>
+                    </div>
+                    <div class="folder-item" id="nav-favorites">
+                        <div class="folder-left">
+                            <svg class="folder-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+                            <span class="folder-name">Favoritos (Prompts)</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="sidebar-section-head" id="fav-folder-header" style="display:none;">
+                <span class="section-label" style="color:var(--warning)">Carpetas Favoritas</span>
+            </div>
+            <nav id="favorite-folder-list" class="folder-nav-scroll" style="flex: 0 0 auto; max-height: 20vh; padding-bottom: 8px;"></nav>
+            <div id="fav-folder-separator" class="divider-h" style="margin: 0 12px; display:none;"></div>
+
+
+            <div class="sidebar-section-head">
+                <span class="section-label">Carpetas</span>
+                <div class="section-actions">
+                    <button id="btn-open-folder-sort" class="icon-btn-small" title="Ordenar Carpetas">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5h10"></path><path d="M11 9h10"></path><path d="M11 13h4"></path><path d="M3 17l3 3 3-3"></path><path d="M6 18V4"></path></svg>
+                    </button>
+                    <button id="btn-new-folder" class="icon-btn-small" title="Nueva Carpeta">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                    </button>
+                </div>
+            </div>
+            <nav id="folder-list" class="folder-nav-scroll"></nav>
+
+            <div class="sidebar-section-head">
+                <span class="section-label">Etiquetas</span>
+                <div class="section-actions">
+                    <button id="multi-tag-btn" class="icon-btn-small" title="Selección Múltiple">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13"></path><path d="M8 12h13"></path><path d="M8 18h13"></path><polyline points="3 6 3.01 6"></polyline><polyline points="3 12 3.01 12"></polyline><polyline points="3 18 3.01 18"></polyline></svg>
+                    </button>
+                    <button id="btn-new-tag" class="icon-btn-small" title="Nueva Etiqueta">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                    </button>
+                    <button id="btn-open-tag-manager" class="icon-btn-small" title="Gestionar">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                    </button>
+                </div>
+            </div>
+            <nav id="tag-list" class="tags-area-scroll"></nav>
+        </aside>
+
+        <main class="main-content">
+            <header class="top-bar">
+                <button class="icon-btn mobile-only" id="menu-btn">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+                </button>
+
+                <div class="search-wrapper" id="search-bar-container">
+                    <button class="icon-btn mobile-only" id="btn-mobile-search-close" style="display:none; margin-right:5px;">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                    </button>
+
+                    <div class="search-container">
+                        <svg class="search-icon-deco" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                        <input type="text" id="search-input" placeholder="Buscar prompt...">
+                    </div>
+                    
+                    <div class="relative-wrapper">
+                        <button id="btn-toggle-filter-panel" class="icon-btn" title="Filtros Fecha">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>
+                        </button>
+                        <div id="filter-panel" class="floating-menu">
+                            <div class="filter-header">Filtrar por Fecha</div>
+                            <div class="filter-row"><label>Desde</label><input type="date" id="filter-date-start" onchange="renderPrompts()"></div>
+                            <div class="filter-row"><label>Hasta</label><input type="date" id="filter-date-end" onchange="renderPrompts()"></div>
+                            <button id="btn-clear-filters" class="btn-text full-width">Limpiar Filtros</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="top-actions">
+                    <button id="btn-toggle-theme" class="icon-btn hide-mobile-xs btn-theme" title="Tema">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"></path></svg>
+                    </button>
+
+                    <div class="relative-wrapper">
+                        <button id="btn-toggle-sort-menu" class="icon-btn" title="Ordenar">
+                           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5h10"></path><path d="M11 9h10"></path><path d="M11 13h4"></path><path d="M3 17l3 3 3-3"></path><path d="M6 18V4"></path></svg>
+                        </button>
+                        <div id="sort-menu" class="floating-menu wide">
+                            <div class="section-title">Ordenar Prompts por</div>
+                            <a id="sort-type-date" class="menu-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg> Fecha</a>
+                            <a id="sort-type-folder" class="menu-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg> Carpeta</a>
+                            <a id="sort-type-tag" class="menu-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9h18v3H4z"></path><path d="M2 15h18v3H2z"></path></svg> Etiqueta</a>
+                            <div class="divider-h"></div>
+                            <div class="section-title">Dirección</div>
+                            <a id="sort-dir-asc" class="menu-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg> Asc (A-Z)</a>
+                            <a id="sort-dir-desc" class="menu-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg> Desc (Z-A)</a>
+                        </div>
+                    </div>
+
+                    <div class="relative-wrapper">
+                        <button id="btn-toggle-export-menu" class="icon-btn" title="Exportar/Backup">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                        </button>
+                        <div id="export-menu" class="floating-menu">
+                            <div id="db-status-menu" class="menu-item disabled-text" style="font-size:11px; font-weight:700; color:var(--text-muted); padding: 8px 12px; border-bottom:1px solid var(--border); margin-bottom:8px;">Modo: Local (Navegador)</div>
+                            
+                            <a id="btn-load-db" class="menu-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 15v4c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2v-4M17 9l-5 5-5-5M12 12V3"></path></svg> Cargar DB (Sobrescribir)</a>
+                            
+                            <a id="btn-save-db" class="menu-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg> Guardar DB (Sincronizar)</a>
+                            
+                            <div class="divider-h"></div>
+                            <div class="section-title">Exportar Datos</div>
+                            <a id="btn-export-json" class="menu-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg> JSON de Respaldo</a>
+                            <div class="divider-h"></div>
+                            <div class="section-title">Sincronización en la Nube</div>
+                            <a id="btn-connect-drive" class="menu-item">Conectar con Google Drive</a>
+                            <a id="btn-drive-sync" class="menu-item">Sincronizar ahora (Drive)</a>
+                            <a id="btn-drive-disconnect" class="menu-item">Desconectar Drive</a>
+                            <a id="btn-export-txt" class="menu-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg> Texto (.txt)</a>
+                            <a id="btn-export-csv" class="menu-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="20" x2="12" y2="10"></line><line x1="18" y1="20" x2="18" y2="4"></line><line x1="6" y1="20" x2="6" y2="16"></line></svg> Excel (.csv)</a>
+                        </div>
+                    </div>
+
+                    <button id="btn-open-help" class="icon-btn hide-mobile-xs" title="Ayuda">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                    </button>
+
+                    <div class="divider-v"></div>
+                    <button id="btn-new-prompt" class="btn-primary">+ Nuevo</button>
+                </div>
+            </header>
+
+            <div class="content-header">
+                <div class="header-left">
+                    <h1 id="view-title">Todos</h1>
+                    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                        <span class="prompt-count" id="prompt-count">0 prompts</span>
+                        <div id="active-filters" class="tags-container"></div>
+                        <button id="clear-filters-btn" class="tag" style="background:var(--danger); color:white; border:none; cursor:pointer; display:none;">✕ Limpiar</button>
+                    </div>
+                    <div id="trash-notice" style="display:none; width:100%; color:var(--warning); font-size:12px; margin-top:5px; font-weight:500;">⚠ Nota: Los elementos de la papelera se eliminan automáticamente a los 60 días.</div>
+                </div>
+            </div>
+
+            <div id="prompts-grid" class="prompts-grid"></div>
+        </main>
+    </div>
+
+    <div id="prompt-modal" class="modal-overlay">
+        <div class="modal-card">
+            <div class="modal-header"><h3>Prompt</h3><button class="icon-btn btn-close-modal">✕</button></div>
+            <div class="modal-body modal-body-flex">
+                <div class="form-group no-shrink"><label>Título</label><input type="text" id="m-title" class="input-line" placeholder="Ej. Generador de Ideas SEO"></div>
+                <div class="form-group no-shrink"><label>Descripción</label><input type="text" id="m-description" class="input-line" placeholder="Breve explicación..."></div>
+                <div class="form-group flex-grow-area"><label>Contenido del Prompt</label><textarea id="m-content" placeholder="Escribe aquí el prompt completo..."></textarea></div>
+                <div class="form-row no-shrink">
+                    <div class="form-group half"><label>Carpeta</label><select id="m-category"></select></div>
+                    <div class="form-group half"><label>Etiquetas</label><div class="autocomplete-wrapper"><input type="text" id="m-tags" class="input-line" placeholder="marketing, seo..."><div id="tag-suggestions" class="suggestions-list"></div></div></div>
+                </div>
+            </div>
+            <div class="modal-footer" style="justify-content: space-between;">
+                <button class="icon-btn btn-close-modal" title="Cancelar" style="color:var(--text-muted);"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+                <button id="btn-save-prompt" class="icon-btn btn-save" title="Guardar Prompt">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="view-modal" class="modal-overlay">
+        <div class="modal-card">
+            <div class="modal-header"><h3>Detalles</h3><button class="icon-btn btn-close-modal">✕</button></div>
+            <div class="modal-body">
+                <h2 id="v-title" style="font-size:22px;font-weight:700;margin-bottom:12px;color:var(--text-main)"></h2>
+                <div id="v-description" style="color:var(--text-muted);margin-bottom:24px;line-height:1.6"></div>
+                <div style="background:var(--bg-input);padding:20px;border-radius:8px;border:1px solid var(--border)">
+                    <div id="v-content" style="white-space:pre-wrap;font-family:'JetBrains Mono',monospace;font-size:14px;color:var(--text-main);line-height:1.6"></div>
+                </div>
+            </div>
+            <div class="modal-footer" style="justify-content: space-between;">
+                <div class="action-group-safe" style="display:flex; gap:8px;">
+                     <button id="v-btn-duplicate" class="btn-card" title="Duplicar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button>
+                     <button id="v-btn-copy" class="btn-card" title="Copiar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><path d="M15 2H9a1 1 0 0 0-1 1v2a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1z"></path></svg></button>
+                     <button id="v-btn-edit" class="btn-card" title="Editar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>
+                </div>
+                <div class="action-group-danger">
+                    <button id="v-btn-delete" class="btn-card btn-delete" title="Eliminar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="folder-modal" class="modal-overlay">
+        <div class="modal-card small">
+            <div class="modal-header"><h3 id="f-title">Carpeta</h3><button class="icon-btn btn-close-modal">✕</button></div>
+            <div class="modal-body">
+                <div class="form-group"><label>Nombre de la carpeta</label><input type="text" id="f-name" class="input-line" placeholder="Nombre"></div>
+            </div>
+            <div class="modal-footer" style="justify-content: space-between;">
+                 <button class="icon-btn btn-close-modal" title="Cancelar" style="color:var(--text-muted);"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+                 <button id="btn-save-folder" class="icon-btn btn-save" title="Guardar Carpeta">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="folder-sort-modal" class="modal-overlay">
+        <div class="modal-card small">
+            <div class="modal-header"><h3>Ordenar Carpetas</h3><button class="icon-btn btn-close-modal">✕</button></div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Criterio de Ordenación</label>
+                    <select id="f-sort-type" class="input-line">
+                        <option value="name">Nombre (A-Z)</option>
+                        <option value="count">Número de Prompts</option>
+                    </select>
+                </div>
+                 <div class="form-group">
+                    <label>Dirección</label>
+                    <select id="f-sort-dir" class="input-line">
+                        <option value="asc">Ascendente</option>
+                        <option value="desc">Descendente</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="icon-btn btn-close-modal" title="Cancelar" style="color:var(--text-muted);"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+                <button id="btn-apply-folder-sort" class="btn-primary">Aplicar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="tag-modal" class="modal-overlay"><div class="modal-card"><div class="modal-header"><h3>Gestionar etiquetas</h3><button class="icon-btn btn-close-modal">✕</button></div><div class="modal-body"><div id="tag-list-manager" class="tag-list-scroll"></div></div></div></div>
+    <div id="tag-create-modal" class="modal-overlay"><div class="modal-card small"><div class="modal-header"><h3>Nueva Etiqueta</h3><button class="icon-btn btn-close-modal">✕</button></div><div class="modal-body"><input type="text" id="quick-tag-name" class="input-line" placeholder="Nombre"></div><div class="modal-footer"><button id="btn-cancel-new-tag" class="btn-text">Cancelar</button><button id="btn-create-new-tag" class="btn-primary">Crear</button></div></div></div>
+    
+    <div id="toast-container"></div>
+    <input type="file" id="import-file" style="display:none" accept=".json">
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="script.js"></script>
+</body>
+</html>

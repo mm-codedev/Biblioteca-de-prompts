@@ -1,0 +1,11 @@
+{
+  "name": "prompt-manager-tests",
+  "version": "1.0.0",
+  "description": "Automated smoke tests for Prompt Manager Pro",
+  "scripts": {
+    "test": "node test/run-smoke.js"
+  },
+  "devDependencies": {
+    "puppeteer-core": "^20.8.0"
+  }
+}

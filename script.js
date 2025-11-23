@@ -42,6 +42,22 @@ function initDrive() {
                     document.getElementById('db-status-menu').textContent = `DB Conectada: Drive`;
                     document.getElementById('db-status-menu').style.color = 'var(--accent)';
                     showToast('Conectado a Google Drive');
+                        // After connecting, check if a DB file exists on Drive and offer to load it
+                        (async () => {
+                            try {
+                                const remote = await findDriveFile();
+                                if (remote && remote.id) {
+                                    // Ask the user whether to load from Drive now to avoid accidental overwrites
+                                    if (confirm('Se encontró una copia en Google Drive. ¿Deseas cargarla ahora y sobrescribir los datos locales? (Aceptar = Cargar desde Drive, Cancelar = Mantener local)')) {
+                                        await loadFromDrive();
+                                    } else {
+                                        showToast('Conexión Drive establecida. Usa "Sincronizar ahora (Drive)" para subir manualmente.');
+                                    }
+                                }
+                            } catch(e) {
+                                // ignore errors here
+                            }
+                        })();
                 }
             }
         });
@@ -85,6 +101,33 @@ async function saveToDrive() {
 
         let file = null;
         try { file = await findDriveFile(); } catch(e) { /* ignore */ }
+
+        // If a remote file exists, fetch it to compare before overwriting
+        if (file && file.id) {
+            try {
+                const existingRes = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`, { headers: { Authorization: `Bearer ${driveAccessToken}` } });
+                if (existingRes && existingRes.ok) {
+                    try {
+                        const existingJson = await existingRes.json();
+                        const remoteCount = Array.isArray(existingJson.prompts) ? existingJson.prompts.length : 0;
+                        const localCount = Array.isArray(app.prompts) ? app.prompts.length : 0;
+                        // If remote has data and local is empty or much smaller, confirm before overwrite
+                        if (remoteCount > 0 && localCount === 0) {
+                            if (!confirm('El archivo en Drive contiene datos y los datos locales parecen vacíos. ¿Estás seguro de que quieres sobrescribir el archivo remoto con datos locales (esto eliminará los datos en Drive)?')) {
+                                showToast('Cancelado: no se sobrescribió Drive');
+                                return;
+                            }
+                        }
+                        if (remoteCount > 0 && localCount > 0 && localCount < Math.floor(remoteCount/2)) {
+                            if (!confirm('El archivo en Drive contiene más datos que los locales. ¿Deseas sobrescribir Drive con la versión local?')) {
+                                showToast('Cancelado: no se sobrescribió Drive');
+                                return;
+                            }
+                        }
+                    } catch(e) { /* ignore parse errors */ }
+                }
+            } catch(e) { /* ignore fetch errors */ }
+        }
 
         let url, method;
         if (file && file.id) {

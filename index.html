@@ -129,7 +129,7 @@
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
                         </button>
                         <div id="export-menu" class="floating-menu">
-                            <div id="db-status-menu" class="menu-item disabled-text" style="font-size:11px; font-weight:700; color:var(--text-muted); padding: 8px 12px; border-bottom:1px solid var(--border); margin-bottom:8px;">Modo: Local (Navegador)</div>
+                            <div id="db-status-menu" class="menu-item disabled-text" style="font-size:11px; font-weight:700; color:var(--text-muted); padding: 8px 12px; border-bottom:1px solid var(--border); margin-bottom:8px;">Modo: localhost (Navegador)</div>
                             
                             <a id="btn-load-db" class="menu-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 15v4c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2v-4M17 9l-5 5-5-5M12 12V3"></path></svg> Cargar DB (Sobrescribir)</a>
                             
@@ -263,6 +263,56 @@
     
     <div id="toast-container"></div>
     <input type="file" id="import-file" style="display:none" accept=".json">
+
+    <!-- Drive Sync Modal: appears when connecting and remote copy found -->
+    <div id="drive-sync-modal" class="modal-overlay">
+        <div class="modal-card small">
+            <div class="modal-header"><h3>Sincronización Drive</h3><button class="icon-btn btn-close-modal">✕</button></div>
+            <div class="modal-body">
+                <p id="drive-sync-message">Se encontró una copia en Google Drive.</p>
+                <p style="font-size:13px;color:var(--text-muted);">Remoto: <strong id="drive-remote-count">0</strong> prompts — Local: <strong id="drive-local-count">0</strong> prompts</p>
+            </div>
+            <div class="modal-footer" style="justify-content: flex-end; gap:8px;">
+                <button id="btn-drive-load" class="btn-text">Cargar desde Drive</button>
+                <button id="btn-drive-merge" class="btn-primary">Fusionar (añadir faltantes)</button>
+                <button id="btn-drive-keep" class="icon-btn" style="color:var(--text-muted);">Mantener locales</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Drive Overwrite Modal: appears before overwriting remote file -->
+    <div id="drive-overwrite-modal" class="modal-overlay">
+        <div class="modal-card small">
+            <div class="modal-header"><h3>Confirmar sobrescritura</h3><button class="icon-btn btn-close-modal">✕</button></div>
+            <div class="modal-body">
+                <p id="drive-overwrite-message">El archivo en Drive contiene datos. ¿Qué quieres hacer?</p>
+                <p style="font-size:13px;color:var(--text-muted);">Remoto: <strong id="drive-overwrite-remote-count">0</strong> prompts — Local: <strong id="drive-overwrite-local-count">0</strong> prompts</p>
+            </div>
+            <div class="modal-footer" style="justify-content: flex-end; gap:8px;">
+                <button id="btn-overwrite" class="btn-primary">Sobrescribir remoto</button>
+                <button id="btn-overwrite-merge" class="btn-text">Fusionar y subir</button>
+                <button id="btn-overwrite-cancel" class="icon-btn" style="color:var(--text-muted);">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Generic Confirm Modal -->
+    <div id="confirm-modal" class="modal-overlay">
+        <div class="modal-card small">
+            <div class="modal-header"><h3 id="confirm-title">Confirmar</h3><button class="icon-btn btn-close-modal">✕</button></div>
+            <div class="modal-body">
+                <p id="confirm-message">¿Estás seguro?</p>
+            </div>
+            <div class="modal-footer" style="justify-content: flex-end; gap:8px;">
+                <button id="confirm-cancel" class="icon-btn" style="color:var(--text-muted);">Cancelar</button>
+                <button id="confirm-ok" class="btn-primary">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sync status small badge -->
+    <div id="sync-status" class="sync-status" style="position:fixed;left:12px;bottom:12px;background:var(--bg-input);border:1px solid var(--border);padding:6px 10px;border-radius:8px;font-size:12px;color:var(--text-muted);box-shadow:0 4px 12px rgba(0,0,0,0.12);">Sincronización: Inactiva</div>
+
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="script.js"></script>
 </body>

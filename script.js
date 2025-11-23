@@ -13,7 +13,9 @@ let app = {
     multiSelectMode: false,
     fileHandle: null,
     lastModified: 0, 
-    saveTimeout: null 
+    saveTimeout: null,
+    driveSaveTimeout: null,
+    isLoadingFromDrive: false
 };
 
 /* --- Google Drive Integration (client-side) ---
@@ -42,22 +44,47 @@ function initDrive() {
                     document.getElementById('db-status-menu').textContent = `DB Conectada: Drive`;
                     document.getElementById('db-status-menu').style.color = 'var(--accent)';
                     showToast('Conectado a Google Drive');
-                        // After connecting, check if a DB file exists on Drive and offer to load it
-                        (async () => {
-                            try {
-                                const remote = await findDriveFile();
-                                if (remote && remote.id) {
-                                    // Ask the user whether to load from Drive now to avoid accidental overwrites
-                                    if (confirm('Se encontró una copia en Google Drive. ¿Deseas cargarla ahora y sobrescribir los datos locales? (Aceptar = Cargar desde Drive, Cancelar = Mantener local)')) {
-                                        await loadFromDrive();
-                                    } else {
-                                        showToast('Conexión Drive establecida. Usa "Sincronizar ahora (Drive)" para subir manualmente.');
+                    updateSyncStatus('Conectado (Drive)', 'var(--accent)');
+                                // After connecting, fetch remote metadata and offer a safe choice
+                                (async () => {
+                                    try {
+                                        const remote = await findDriveFile();
+                                        if (remote && remote.id) {
+                                            // fetch remote content to obtain counts
+                                            try {
+                                                const contentRes = await fetch(`https://www.googleapis.com/drive/v3/files/${remote.id}?alt=media`, { headers: { Authorization: `Bearer ${driveAccessToken}` } });
+                                                if (contentRes && contentRes.ok) {
+                                                    const json = await contentRes.json();
+                                                    const remoteCount = Array.isArray(json.prompts) ? json.prompts.length : 0;
+                                                    const localCount = Array.isArray(app.prompts) ? app.prompts.length : 0;
+                                                    const choice = await openDriveSyncModal(remoteCount, localCount);
+                                                    if (choice === 'load') {
+                                                        await loadFromDrive(true);
+                                                    } else if (choice === 'merge') {
+                                                        const merged = mergeRemoteLocal(json);
+                                                        app.prompts = merged.prompts;
+                                                        app.folders = merged.folders;
+                                                        app.tags = merged.tags;
+                                                        app.colors = merged.colors;
+                                                        app.favoriteFolders = merged.favoriteFolders;
+                                                        saveData(true);
+                                                        showToast(`Fusionado: +${merged.added} prompts añadidos`);
+                                                    } else {
+                                                        showToast('Se mantuvieron los datos locales');
+                                                    }
+                                                } else {
+                                                    showToast('Conexión Drive establecida. No se pudo leer la copia remota.');
+                                                }
+                                            } catch (e) {
+                                                console.warn('No se pudo leer contenido remoto', e);
+                                            }
+                                        } else {
+                                            showToast('Conexión Drive establecida. No se encontró copia remota.');
+                                        }
+                                    } catch(e) {
+                                        // ignore errors here
                                     }
-                                }
-                            } catch(e) {
-                                // ignore errors here
-                            }
-                        })();
+                                })();
                 }
             }
         });
@@ -67,9 +94,9 @@ function initDrive() {
 }
 
 async function connectDrive() {
-    if (!DRIVE_CLIENT_ID) { alert('Falta DRIVE_CLIENT_ID en el código. Añade tu Client ID en script.js'); return; }
+    if (!DRIVE_CLIENT_ID) { await showAlert('Falta DRIVE_CLIENT_ID en el código. Añade tu Client ID en script.js', 'Drive Client ID'); return; }
     if (!driveTokenClient) initDrive();
-    if (!driveTokenClient) { alert('Google Identity Services no está disponible. Comprueba CSP y conexión a internet.'); return; }
+    if (!driveTokenClient) { await showAlert('Google Identity Services no está disponible. Comprueba CSP y conexión a internet.', 'Google Identity'); return; }
     driveTokenClient.requestAccessToken({ prompt: 'consent' });
 }
 
@@ -85,13 +112,15 @@ async function findDriveFile() {
 
 async function saveToDrive() {
     if (!driveAccessToken) { showToast('No conectado a Drive'); return; }
+    // Do not attempt to save while we are loading from Drive to avoid overwriting
+    if (app.isLoadingFromDrive) return;
     try {
         const payload = JSON.stringify({ prompts: app.prompts, folders: app.folders, tags: app.tags, colors: app.colors, favoriteFolders: app.favoriteFolders }, null, 2);
         const metadata = { name: DRIVE_FILE_NAME, mimeType: 'application/json' };
         const boundary = '-------314159265358979323846';
         const delimiter = "\r\n--" + boundary + "\r\n";
         const close_delim = "\r\n--" + boundary + "--";
-        const multipartRequestBody = delimiter
+        let multipartRequestBody = delimiter
             + 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
             + JSON.stringify(metadata)
             + delimiter
@@ -111,18 +140,35 @@ async function saveToDrive() {
                         const existingJson = await existingRes.json();
                         const remoteCount = Array.isArray(existingJson.prompts) ? existingJson.prompts.length : 0;
                         const localCount = Array.isArray(app.prompts) ? app.prompts.length : 0;
-                        // If remote has data and local is empty or much smaller, confirm before overwrite
-                        if (remoteCount > 0 && localCount === 0) {
-                            if (!confirm('El archivo en Drive contiene datos y los datos locales parecen vacíos. ¿Estás seguro de que quieres sobrescribir el archivo remoto con datos locales (esto eliminará los datos en Drive)?')) {
+                        // If remote has data and local appears empty or much smaller, show modal to choose
+                        if (remoteCount > 0 && (localCount === 0 || (localCount > 0 && localCount < Math.floor(remoteCount / 2)))) {
+                            const action = await openDriveOverwriteModal(remoteCount, localCount);
+                            if (action === 'cancel') {
                                 showToast('Cancelado: no se sobrescribió Drive');
                                 return;
                             }
-                        }
-                        if (remoteCount > 0 && localCount > 0 && localCount < Math.floor(remoteCount/2)) {
-                            if (!confirm('El archivo en Drive contiene más datos que los locales. ¿Deseas sobrescribir Drive con la versión local?')) {
-                                showToast('Cancelado: no se sobrescribió Drive');
-                                return;
+                            if (action === 'merge') {
+                                const merged = mergeRemoteLocal(existingJson);
+                                app.prompts = merged.prompts;
+                                app.folders = merged.folders;
+                                app.tags = merged.tags;
+                                app.colors = merged.colors;
+                                app.favoriteFolders = merged.favoriteFolders;
+                                saveData(true);
+                                // Recompute payload from merged state
+                                const mergedPayload = JSON.stringify({ prompts: app.prompts, folders: app.folders, tags: app.tags, colors: app.colors, favoriteFolders: app.favoriteFolders }, null, 2);
+                                // rebuild multipart body with mergedPayload
+                                const multipartRequestBodyMerged = delimiter
+                                    + 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
+                                    + JSON.stringify(metadata)
+                                    + delimiter
+                                    + 'Content-Type: application/json\r\n\r\n'
+                                    + mergedPayload
+                                    + close_delim;
+                                // swap payload for upload
+                                multipartRequestBody = multipartRequestBodyMerged;
                             }
+                            // if action === 'overwrite' we proceed with current payload (local)
                         }
                     } catch(e) { /* ignore parse errors */ }
                 }
@@ -145,13 +191,14 @@ async function saveToDrive() {
         try { localStorage.setItem('drive_file_id', driveFileId); } catch(e){}
         document.getElementById('db-status-menu').textContent = `DB Conectada: ${DRIVE_FILE_NAME}`;
         showToast('Guardado en Google Drive');
+        updateSyncStatus('Guardado en Drive', 'var(--accent)');
     } catch (e) {
         console.error('saveToDrive error', e);
         showToast('Error al guardar en Drive');
     }
 }
 
-async function loadFromDrive() {
+async function loadFromDrive(skipConfirm = false) {
     if (!driveAccessToken) { showToast('No conectado a Drive'); return; }
     try {
         let file = null;
@@ -165,15 +212,21 @@ async function loadFromDrive() {
         if (!contentRes.ok) throw new Error(await contentRes.text());
         const json = await contentRes.json();
         const val = validateImportData(json);
-        if (!val.ok) { alert('El archivo en Drive no contiene datos válidos.'); return; }
-        if (confirm('Cargar datos desde Drive y sobrescribir los locales?')) {
-            app.prompts = json.prompts;
-            app.folders = json.folders;
-            app.tags = json.tags || [];
-            app.colors = json.colors || {};
-            app.favoriteFolders = json.favoriteFolders || [];
-            saveData(true);
-            showToast('Cargado desde Google Drive');
+        if (!val.ok) { await showAlert('El archivo en Drive no contiene datos válidos.', 'Archivo inválido'); return; }
+        if (skipConfirm || await showConfirm('Cargar datos desde Drive y sobrescribir los locales?', 'Cargar desde Drive')) {
+            try {
+                app.isLoadingFromDrive = true;
+                app.prompts = json.prompts;
+                app.folders = json.folders;
+                app.tags = json.tags || [];
+                app.colors = json.colors || {};
+                app.favoriteFolders = json.favoriteFolders || [];
+                saveData(true);
+                showToast('Cargado desde Google Drive');
+                updateSyncStatus('Cargado desde Drive', 'var(--accent)');
+            } finally {
+                app.isLoadingFromDrive = false;
+            }
         }
     } catch (e) {
         console.error('loadFromDrive error', e);
@@ -189,9 +242,10 @@ async function disconnectDrive() {
     } catch (e) { /* ignore */ }
     driveAccessToken = null; driveTokenClient = null; driveFileId = null;
     try { localStorage.removeItem('drive_access_token'); localStorage.removeItem('drive_file_id'); } catch(e){}
-    document.getElementById('db-status-menu').textContent = 'Modo: Local (Navegador)';
+    document.getElementById('db-status-menu').textContent = 'Modo: localhost (Navegador)';
     document.getElementById('db-status-menu').style.color = 'var(--text-muted)';
     showToast('Drive desconectado');
+    updateSyncStatus('Inactiva');
 }
 
 function escapeHtml(text) {
@@ -338,7 +392,7 @@ async function checkFileForChanges() {
 
         const file = await app.fileHandle.getFile();
         if (file.lastModified > app.lastModified) {
-            if (confirm(`El archivo "${file.name}" ha sido modificado externamente (por otro navegador/programa). ¿Quieres recargarlo ahora y perder los cambios locales no guardados?`)) {
+            if (await showConfirm(`El archivo "${file.name}" ha sido modificado externamente (por otro navegador/programa). ¿Quieres recargarlo ahora y perder los cambios locales no guardados?`, 'Archivo actualizado')) {
                 await applyFileHandle(app.fileHandle);
                 showToast(`Sincronización automática: ${file.name} actualizado.`);
             } else {
@@ -364,7 +418,7 @@ async function loadDatabaseFile(isAutoLoad = false) {
 
     // If connected to Drive offer to load from Drive first
     try {
-        if (driveAccessToken && confirm('Se detectó conexión con Google Drive. ¿Deseas cargar la base de datos desde Drive en lugar de un archivo local?')) {
+        if (driveAccessToken && await showConfirm('Se detectó conexión con Google Drive. ¿Deseas cargar la base de datos desde Drive en lugar de un archivo local?', 'Carga desde Drive')) {
             await loadFromDrive();
             return;
         }
@@ -436,7 +490,7 @@ function loadData(isInitialLoad = false) {
         // Do not attempt to auto-restore a serialized FileHandle — skip auto-load.
         const statusEl = document.getElementById('db-status-menu');
         if (statusEl) {
-            statusEl.textContent = `Modo: Local (Navegador)`;
+            statusEl.textContent = `Modo: localhost (Navegador)`;
             statusEl.style.color = 'var(--text-muted)';
         }
         
@@ -455,6 +509,14 @@ function saveData(skipFile = false) {
         if (app.saveTimeout) clearTimeout(app.saveTimeout);
         app.saveTimeout = setTimeout(() => { saveDatabaseFile(); }, 2000);
     }
+
+    // Automatic Drive sync: if connected and not currently loading from Drive, schedule a save
+    try {
+        if (driveAccessToken && !app.isLoadingFromDrive) {
+            if (app.driveSaveTimeout) clearTimeout(app.driveSaveTimeout);
+            app.driveSaveTimeout = setTimeout(() => { try { saveToDrive(); } catch(e){} }, 1500);
+        }
+    } catch(e){}
 }
 
 function duplicatePrompt(id) {
@@ -505,7 +567,7 @@ function countPromptsInFolder(folderName) {
     return app.prompts.filter(p => p.cat === folderName).length;
 }
 
-function runTrashCleanup() { const SIXTY_DAYS_MS = 60 * 24 * 60 * 60 * 1000; const now = Date.now(); const expired = app.prompts.filter(p => p.cat === TRASH_NAME && p.deletedAt && (now - p.deletedAt > SIXTY_DAYS_MS)); if (expired.length > 0) { if (confirm(`Limpieza: ${expired.length} elementos caducados en la papelera. ¿Eliminar?`)) { app.prompts = app.prompts.filter(p => !expired.includes(p)); cleanupTags(); saveData(); showToast(`${expired.length} eliminados.`); } } }
+
 function cleanupTags() { const usedTags = new Set(); app.prompts.forEach(p => { if (p.tags) p.tags.forEach(t => usedTags.add(t)); }); app.tags = app.tags.filter(t => usedTags.has(t)); app.filters.tags = app.filters.tags.filter(t => app.tags.includes(t)); }
 function renderApp() { renderSidebar(); renderPrompts(); document.querySelectorAll('.menu-item').forEach(a => a.classList.remove('active')); const tEl = document.getElementById(`sort-type-${app.sort.type}`); if(tEl) tEl.classList.add('active'); const dEl = document.getElementById(`sort-dir-${app.sort.dir}`); if(dEl) dEl.classList.add('active'); }
 function toggleMobileSearch() { const wrapper = document.getElementById('search-bar-container'); const btnClose = document.getElementById('btn-mobile-search-close'); const input = document.getElementById('search-input'); const isActive = wrapper.classList.toggle('active-mobile'); btnClose.style.display = isActive ? 'flex' : 'none'; if(isActive) input.focus(); }
@@ -654,7 +716,18 @@ function createFolderElement(f, isActive, isFavorite) {
     return el;
 }
 
-function deleteFolder(encodedName) { const name = decodeURIComponent(encodedName); if (name === 'General' || name === TRASH_NAME) return; if (confirm(`¿Eliminar carpeta "${name}"? Prompts a Papelera.`)) { app.prompts.forEach(p => { if (p.cat === name) { p.cat = TRASH_NAME; p.deletedAt = Date.now(); } }); app.folders = app.folders.filter(f => f !== name); app.favoriteFolders = app.favoriteFolders.filter(f => f !== name); if (app.currentFolder === name) { app.view = 'all'; app.currentFolder = null; } saveData(); showToast('Carpeta eliminada'); } }
+async function deleteFolder(encodedName) {
+    const name = decodeURIComponent(encodedName);
+    if (name === 'General' || name === TRASH_NAME) return;
+    const ok = await showConfirm(`¿Eliminar carpeta "${name}"? Prompts a Papelera.`, 'Eliminar Carpeta');
+    if (!ok) return;
+    app.prompts.forEach(p => { if (p.cat === name) { p.cat = TRASH_NAME; p.deletedAt = Date.now(); } });
+    app.folders = app.folders.filter(f => f !== name);
+    app.favoriteFolders = app.favoriteFolders.filter(f => f !== name);
+    if (app.currentFolder === name) { app.view = 'all'; app.currentFolder = null; }
+    saveData();
+    showToast('Carpeta eliminada');
+}
 
 
 function setView(type, folder=null) { app.view = type; app.currentFolder = folder; if(type === 'folder') app.filters.tags = []; renderApp(); }
@@ -663,7 +736,29 @@ function toggleTagFilter(t, e) { const isAdditive = app.multiSelectMode || (e &&
 function clearFilters() { app.filters.tags=[]; document.getElementById('search-input').value=''; document.getElementById('filter-date-start').value=''; document.getElementById('filter-date-end').value=''; app.view='all'; renderApp(); }
 function setSort(k, v) { app.sort[k]=v; renderApp(); }
 function toggleFav(id) { const p=app.prompts.find(x=>x.id===id); if(p) { p.fav=!p.fav; saveData(); } }
-function deletePrompt(id) { const p=app.prompts.find(x=>x.id===id); if(!p)return; if(p.cat===TRASH_NAME){if(confirm('¿Eliminar permanentemente?')){app.prompts=app.prompts.filter(x=>x.id!==id);cleanupTags();saveData();showToast('Eliminado');} return true; }else{if(confirm('¿Mover a papelera?')){p.cat=TRASH_NAME;p.deletedAt=Date.now();saveData();showToast('A la papelera');} return true; } return false; }
+async function deletePrompt(id) {
+    const p = app.prompts.find(x => x.id === id);
+    if (!p) return false;
+    if (p.cat === TRASH_NAME) {
+        const ok = await showConfirm('¿Eliminar permanentemente?', 'Eliminar');
+        if (ok) {
+            app.prompts = app.prompts.filter(x => x.id !== id);
+            cleanupTags();
+            saveData();
+            showToast('Eliminado');
+        }
+        return ok;
+    } else {
+        const ok = await showConfirm('¿Mover a papelera?', 'Mover a Papelera');
+        if (ok) {
+            p.cat = TRASH_NAME;
+            p.deletedAt = Date.now();
+            saveData();
+            showToast('A la papelera');
+        }
+        return ok;
+    }
+}
 function movePromptToFolder(e, c) { e.preventDefault(); e.currentTarget.classList.remove('drag-over'); const id=+e.dataTransfer.getData('id'); const p=app.prompts.find(x=>x.id===id); if(p && p.cat !== c) { p.cat=c; saveData(); showToast(`Movido a ${c}`); } }
 function copyPromptById(id) { const p=app.prompts.find(x=>x.id===id); if(p && p.content) navigator.clipboard.writeText(p.content).then(()=>showToast('Prompt Copiado')); }
 function showToast(m) { const c=document.getElementById('toast-container'); const t=document.createElement('div'); t.className='toast'; t.textContent=m; c.appendChild(t); setTimeout(()=>t.remove(), 3000); }
@@ -683,17 +778,17 @@ function openViewModal(id) {
     document.getElementById('v-btn-copy').onclick = () => copyPromptById(p.id); 
     document.getElementById('v-btn-edit').onclick = () => openPromptModal('edit', p.id); 
     const btnDel = document.getElementById('v-btn-delete'); 
-    if(btnDel) { btnDel.onclick = () => { if(deletePrompt(p.id)) closeAllModals(); }; } 
+    if(btnDel) { btnDel.onclick = async () => { if(await deletePrompt(p.id)) closeAllModals(); }; } 
     document.getElementById('view-modal').classList.add('open'); 
 }
 function openFolderRenameSafe(encodedName) { const name = decodeURIComponent(encodedName); openFolderModal('rename', name); }
 function openPromptModal(mode, id) { closeAllModals(); const sel = document.getElementById('m-category'); sel.innerHTML = ''; app.folders.forEach(f => { if(f !== TRASH_NAME) sel.add(new Option(f, f)); }); if(mode === 'edit') { const p = app.prompts.find(x=>x.id===id); app.editId = id; document.getElementById('m-title').value = p.title || ''; document.getElementById('m-description').value = p.description || ''; document.getElementById('m-content').value = p.content || ''; document.getElementById('m-tags').value = (p.tags||[]).join(', '); sel.value = (p.cat === TRASH_NAME) ? 'General' : p.cat; } else { app.editId = null; document.getElementById('m-title').value = ''; document.getElementById('m-description').value = ''; document.getElementById('m-content').value = ''; document.getElementById('m-tags').value = ''; sel.value = (app.view==='folder'&&app.currentFolder&&app.currentFolder!==TRASH_NAME)?app.currentFolder:'General'; } document.getElementById('prompt-modal').classList.add('open'); setTimeout(()=>document.getElementById('m-title').focus(), 50); }
 function savePrompt() { const title = document.getElementById('m-title').value.trim(); const desc = document.getElementById('m-description').value.trim(); const content = document.getElementById('m-content').value.trim(); const cat = document.getElementById('m-category').value; const tags = document.getElementById('m-tags').value.split(',').map(t=>t.trim()).filter(t=>t); if(!content) return; tags.forEach(t => { if(!app.tags.includes(t)) app.tags.push(t); }); app.tags.sort(); const finalTitle = title || (content.length > 50 ? content.substring(0, 50)+'...' : content); if(app.editId) { const p = app.prompts.find(x=>x.id===app.editId); p.title = finalTitle; p.description = desc; p.content = content; p.cat = cat; p.tags = tags; p.deletedAt = null; } else { app.prompts.unshift({ id: Date.now(), title: finalTitle, description: desc, content, cat, tags, fav: false }); } app.view='folder'; app.currentFolder=cat; clearFilters(); cleanupTags(); saveData(); closeAllModals(); showToast('Guardado'); }
 function openFolderModal(mode, name) { closeAllModals(); document.getElementById('f-title').textContent = mode==='create'?'Nueva Carpeta':'Renombrar'; document.getElementById('f-name').value = name||''; app.editFolder = name; document.getElementById('folder-modal').classList.add('open'); setTimeout(()=>document.getElementById('f-name').focus(), 50); }
-function saveFolder() { 
+async function saveFolder() { 
     const name = document.getElementById('f-name').value.trim(); 
-    if(!name || (app.folders.includes(name) && name !== app.editFolder)) return alert('Nombre inválido');
-    if (name === TRASH_NAME) return alert('Nombre inválido (reservado para la Papelera)');
+    if(!name || (app.folders.includes(name) && name !== app.editFolder)) { await showAlert('Nombre inválido', 'Guardar Carpeta'); return; }
+    if (name === TRASH_NAME) { await showAlert('Nombre inválido (reservado para la Papelera)', 'Guardar Carpeta'); return; }
     if(app.editFolder) { 
         const o = app.editFolder; 
         app.folders[app.folders.indexOf(o)] = name; 
@@ -765,7 +860,14 @@ function renderTagManager() {
     });
 }
 function renameTag(o,n){n=n.trim();if(n&&!app.tags.includes(n)){app.tags[app.tags.indexOf(o)]=n;app.prompts.forEach(p=>p.tags=p.tags?.map(t=>t===o?n:t));if(app.colors[o]){app.colors[n]=app.colors[o];delete app.colors[o];}saveData();openTagManager();}}
-function delTag(t){if(confirm(`¿Eliminar etiqueta "${t}"?`)){app.tags=app.tags.filter(x=>x!==t);app.prompts.forEach(p=>p.tags=p.tags?.filter(x=>x!==t));app.filters.tags=app.filters.tags.filter(x=>x!==t);saveData();openTagManager();}}
+async function delTag(t){
+    if (!await showConfirm(`¿Eliminar etiqueta "${t}"?`, 'Eliminar etiqueta')) return;
+    app.tags=app.tags.filter(x=>x!==t);
+    app.prompts.forEach(p=>p.tags=p.tags?.filter(x=>x!==t));
+    app.filters.tags=app.filters.tags.filter(x=>x!==t);
+    saveData();
+    openTagManager();
+}
 function togglePalette(id){
     document.querySelectorAll('.color-palette').forEach(p => { if (p.id !== id) p.style.display = 'none'; });
     const el = document.getElementById(id);
@@ -929,7 +1031,7 @@ function renderPrompts() {
         edit.addEventListener('click', (e) => { e.stopPropagation(); openPromptModal('edit', p.id); });
 
         const del = document.createElement('button'); del.className = 'btn-card btn-delete'; del.title = 'Eliminar'; del.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>';
-        del.addEventListener('click', (e) => { e.stopPropagation(); if (deletePrompt(p.id)) renderPrompts(); });
+        del.addEventListener('click', async (e) => { e.stopPropagation(); if (await deletePrompt(p.id)) renderPrompts(); });
 
         actions.appendChild(dup); actions.appendChild(copy); actions.appendChild(edit); actions.appendChild(del);
 
@@ -950,7 +1052,7 @@ function renderPrompts() {
         container.appendChild(card);
     });
 }
-function importData(){ const f=document.getElementById('import-file').files[0]; if(!f)return; const r=new FileReader(); r.onload=e=>{ try{ const d=JSON.parse(e.target.result); if(d.prompts){ app.prompts=d.prompts||[]; app.folders=d.folders||['General']; app.tags=d.tags||[]; app.colors=d.colors||{}; saveData(); showToast('Importado'); } }catch(x){alert('Error archivo');} }; r.readAsText(f); }
+
 
 function validateImportData(d) {
     const errors = [];
@@ -974,21 +1076,262 @@ function validateImportData(d) {
     return { ok: errors.length === 0, errors };
 }
 
-function importData(){
+// Generic confirm modal helper
+function showConfirm(message, title = 'Confirmar') {
+    return new Promise(resolve => {
+        const modal = document.getElementById('confirm-modal');
+        if (!modal) return resolve(window.confirm(message));
+        const titleEl = document.getElementById('confirm-title');
+        const msgEl = document.getElementById('confirm-message');
+        const ok = document.getElementById('confirm-ok');
+        const cancel = document.getElementById('confirm-cancel');
+
+        // Save previously focused element to restore later
+        const prevFocus = document.activeElement;
+
+        titleEl.textContent = title;
+        msgEl.textContent = message;
+
+        // Make modal accessible
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+
+        modal.classList.add('open');
+        modal.style.display = 'block';
+
+        // Focus management & tab trap
+        const focusable = Array.from(modal.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')).filter(el => !el.hasAttribute('disabled'));
+        let firstFocusable = ok || focusable[0];
+        let lastFocusable = focusable[focusable.length - 1] || ok;
+
+        const keyHandler = (e) => {
+            if (e.key === 'Tab') {
+                if (focusable.length === 0) { e.preventDefault(); return; }
+                if (e.shiftKey) {
+                    if (document.activeElement === firstFocusable) { e.preventDefault(); lastFocusable.focus(); }
+                } else {
+                    if (document.activeElement === lastFocusable) { e.preventDefault(); firstFocusable.focus(); }
+                }
+            } else if (e.key === 'Escape') {
+                e.preventDefault(); cleanup(false);
+            }
+        };
+
+        const cleanup = (val) => {
+            modal.classList.remove('open');
+            modal.style.display = '';
+            modal.removeAttribute('role');
+            modal.removeAttribute('aria-modal');
+            ok.removeEventListener('click', onOk);
+            cancel.removeEventListener('click', onCancel);
+            modal.querySelectorAll('.btn-close-modal').forEach(b => b.removeEventListener('click', onCancel));
+            document.removeEventListener('keydown', keyHandler);
+            try { if (prevFocus && typeof prevFocus.focus === 'function') prevFocus.focus(); } catch(e){}
+            resolve(val);
+        };
+
+        const onOk = () => cleanup(true);
+        const onCancel = () => cleanup(false);
+
+        ok.addEventListener('click', onOk);
+        cancel.addEventListener('click', onCancel);
+        modal.querySelectorAll('.btn-close-modal').forEach(b => b.addEventListener('click', onCancel));
+
+        // Attach key handler and set initial focus
+        document.addEventListener('keydown', keyHandler);
+        try { (firstFocusable || ok).focus(); } catch(e){}
+    });
+}
+
+// Simple alert modal (reuses confirm modal but shows only OK)
+function showAlert(message, title = 'Aviso') {
+    return new Promise(resolve => {
+        const modal = document.getElementById('confirm-modal');
+        if (!modal) { alert((title ? title + '\n\n' : '') + message); return resolve(); }
+        const ok = document.getElementById('confirm-ok');
+        const cancel = document.getElementById('confirm-cancel');
+        const titleEl = document.getElementById('confirm-title');
+        const msgEl = document.getElementById('confirm-message');
+
+        // Save previous focus
+        const prevFocus = document.activeElement;
+
+        titleEl.textContent = title;
+        msgEl.textContent = message;
+
+        // hide cancel while showing alert
+        const prevCancelDisplay = cancel.style.display || '';
+        cancel.style.display = 'none';
+
+        // Make modal accessible
+        modal.setAttribute('role', 'alertdialog');
+        modal.setAttribute('aria-modal', 'true');
+
+        modal.classList.add('open');
+        modal.style.display = 'block';
+
+        const focusable = Array.from(modal.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')).filter(el => !el.hasAttribute('disabled'));
+        const firstFocusable = ok || focusable[0];
+        const lastFocusable = focusable[focusable.length - 1] || ok;
+
+        const keyHandler = (e) => {
+            if (e.key === 'Tab') {
+                if (focusable.length === 0) { e.preventDefault(); return; }
+                if (e.shiftKey) {
+                    if (document.activeElement === firstFocusable) { e.preventDefault(); lastFocusable.focus(); }
+                } else {
+                    if (document.activeElement === lastFocusable) { e.preventDefault(); firstFocusable.focus(); }
+                }
+            } else if (e.key === 'Escape') {
+                e.preventDefault(); cleanup();
+            }
+        };
+
+        const cleanup = () => {
+            modal.classList.remove('open');
+            modal.style.display = '';
+            cancel.style.display = prevCancelDisplay;
+            modal.removeAttribute('role');
+            modal.removeAttribute('aria-modal');
+            ok.removeEventListener('click', onOk);
+            modal.querySelectorAll('.btn-close-modal').forEach(b => b.removeEventListener('click', onOk));
+            document.removeEventListener('keydown', keyHandler);
+            try { if (prevFocus && typeof prevFocus.focus === 'function') prevFocus.focus(); } catch(e){}
+            resolve();
+        };
+
+        const onOk = () => cleanup();
+        ok.addEventListener('click', onOk, { once: true });
+        modal.querySelectorAll('.btn-close-modal').forEach(b => b.addEventListener('click', onOk, { once: true }));
+        document.addEventListener('keydown', keyHandler);
+        try { (firstFocusable || ok).focus(); } catch(e){}
+    });
+}
+
+function updateSyncStatus(text, color) {
+    try {
+        const el = document.getElementById('sync-status');
+        if (!el) return;
+        el.textContent = `Sincronización: ${text}`;
+        if (color) el.style.borderColor = color; else el.style.borderColor = '';
+    } catch (e) {}
+}
+
+// Replace runTrashCleanup with async modal confirmation
+async function runTrashCleanup() {
+    const SIXTY_DAYS_MS = 60 * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    const expired = app.prompts.filter(p => p.cat === TRASH_NAME && p.deletedAt && (now - p.deletedAt > SIXTY_DAYS_MS));
+    if (expired.length > 0) {
+        const ok = await showConfirm(`Limpieza: ${expired.length} elementos caducados en la papelera. ¿Eliminar?`, 'Limpieza Papelera');
+        if (ok) {
+            app.prompts = app.prompts.filter(p => !expired.includes(p));
+            cleanupTags();
+            saveData();
+            showToast(`${expired.length} eliminados.`);
+        }
+    }
+}
+
+// --- Drive modal helpers and merge logic ---
+function openDriveSyncModal(remoteCount, localCount) {
+    return new Promise(resolve => {
+        const modal = document.getElementById('drive-sync-modal');
+        if (!modal) return resolve('keep');
+        document.getElementById('drive-remote-count').textContent = String(remoteCount);
+        document.getElementById('drive-local-count').textContent = String(localCount);
+        modal.classList.add('open');
+        modal.style.display = 'block';
+
+        const cleanup = (action) => {
+            modal.classList.remove('open');
+            modal.style.display = '';
+            resolve(action);
+        };
+
+        const btnLoad = document.getElementById('btn-drive-load');
+        const btnMerge = document.getElementById('btn-drive-merge');
+        const btnKeep = document.getElementById('btn-drive-keep');
+
+        const onClose = () => cleanup('keep');
+
+        btnLoad.addEventListener('click', () => cleanup('load'), { once: true });
+        btnMerge.addEventListener('click', () => cleanup('merge'), { once: true });
+        btnKeep.addEventListener('click', () => cleanup('keep'), { once: true });
+        modal.querySelectorAll('.btn-close-modal').forEach(b => b.addEventListener('click', onClose, { once: true }));
+    });
+}
+
+function openDriveOverwriteModal(remoteCount, localCount) {
+    return new Promise(resolve => {
+        const modal = document.getElementById('drive-overwrite-modal');
+        if (!modal) return resolve('cancel');
+        document.getElementById('drive-overwrite-remote-count').textContent = String(remoteCount);
+        document.getElementById('drive-overwrite-local-count').textContent = String(localCount);
+        modal.classList.add('open');
+        modal.style.display = 'block';
+
+        const cleanup = (action) => {
+            modal.classList.remove('open');
+            modal.style.display = '';
+            resolve(action);
+        };
+
+        const btnOverwrite = document.getElementById('btn-overwrite');
+        const btnMerge = document.getElementById('btn-overwrite-merge');
+        const btnCancel = document.getElementById('btn-overwrite-cancel');
+
+        btnOverwrite.addEventListener('click', () => cleanup('overwrite'), { once: true });
+        btnMerge.addEventListener('click', () => cleanup('merge'), { once: true });
+        btnCancel.addEventListener('click', () => cleanup('cancel'), { once: true });
+        modal.querySelectorAll('.btn-close-modal').forEach(b => b.addEventListener('click', () => cleanup('cancel'), { once: true }));
+    });
+}
+
+function mergeRemoteLocal(remoteJson) {
+    const result = { prompts: [], folders: [], tags: [], colors: {}, favoriteFolders: [], added: 0 };
+    const localMap = new Map();
+    (app.prompts || []).forEach(p => localMap.set(String(p.id), p));
+    // start from local
+    result.prompts = (app.prompts || []).slice();
+    // add remote prompts that are not present locally (by id)
+    (remoteJson.prompts || []).forEach(rp => {
+        if (!localMap.has(String(rp.id))) {
+            result.prompts.push(rp);
+            result.added++;
+        }
+    });
+    // merge folders, tags, colors, favoriteFolders
+    const folderSet = new Set(app.folders || []);
+    (remoteJson.folders || []).forEach(f => folderSet.add(f));
+    result.folders = Array.from(folderSet);
+    const tagSet = new Set(app.tags || []);
+    (remoteJson.tags || []).forEach(t => tagSet.add(t));
+    result.tags = Array.from(tagSet).sort();
+    result.colors = Object.assign({}, app.colors || {}, remoteJson.colors || {});
+    const favSet = new Set(app.favoriteFolders || []);
+    (remoteJson.favoriteFolders || []).forEach(f => favSet.add(f));
+    result.favoriteFolders = Array.from(favSet);
+    if (!result.folders.includes('General')) result.folders.unshift('General');
+    if (!result.folders.includes(TRASH_NAME)) result.folders.push(TRASH_NAME);
+    return result;
+}
+
+async function importData(){
     const f = document.getElementById('import-file')?.files?.[0];
     if (!f) { showToast('No se seleccionó archivo'); return; }
     const r = new FileReader();
-    r.onload = e => {
+    r.onload = async e => {
         try {
             const d = JSON.parse(e.target.result);
             const v = validateImportData(d);
             if (!v.ok) {
-                alert('Archivo inválido:\n' + v.errors.join('\n'));
+                await showAlert('Archivo inválido:\n' + v.errors.join('\n'), 'Importar archivo');
                 return;
             }
 
             // Confirm overwrite
-            if (!confirm('Importar datos y sobrescribir la base actual?')) return;
+            if (!await showConfirm('Importar datos y sobrescribir la base actual?', 'Importar datos')) return;
 
             app.prompts = d.prompts || [];
             app.folders = d.folders || ['General'];
@@ -998,7 +1341,7 @@ function importData(){
             if (!app.folders.includes(TRASH_NAME)) app.folders.push(TRASH_NAME);
             cleanupTags(); app.tags.sort(); saveData(); showToast('Importado correctamente');
         } catch (x) {
-            alert('Error procesando el archivo: ' + (x.message || x));
+            await showAlert('Error procesando el archivo: ' + (x.message || x), 'Importar archivo');
         }
     };
     r.readAsText(f);

@@ -93,6 +93,86 @@ function initDrive() {
     }
 }
 
+// Color popover for editing tag colors
+let _colorPopoverEl = null;
+function openColorPopover(tag, anchorEl) {
+    closeColorPopover();
+    _colorPopoverEl = document.createElement('div');
+    _colorPopoverEl.id = 'color-popover';
+    _colorPopoverEl.className = 'color-popover';
+
+    const colorInput = document.createElement('input');
+    colorInput.type = 'color';
+    colorInput.value = (app.colors && app.colors[tag]) ? app.colors[tag] : rgbToHex(getColor(tag));
+    colorInput.title = `Color para ${tag}`;
+    colorInput.className = 'color-input';
+
+    // When user picks a color, apply immediately and close popover
+    const onChange = (e) => {
+        const v = e.target.value;
+        if (!app.colors) app.colors = {};
+        app.colors[tag] = v;
+        // Update all visible swatches and tags
+        saveData();
+        closeColorPopover();
+        showToast(`Color de "${tag}" actualizado`);
+    };
+
+    colorInput.addEventListener('input', onChange);
+
+    _colorPopoverEl.appendChild(colorInput);
+    document.body.appendChild(_colorPopoverEl);
+
+    // Positioning: place to the right of anchorEl
+    const rect = anchorEl.getBoundingClientRect();
+    const popRect = _colorPopoverEl.getBoundingClientRect();
+    const left = Math.min(window.innerWidth - 220, rect.right + 8);
+    const top = Math.max(8, rect.top - 8);
+    _colorPopoverEl.style.left = `${left}px`;
+    _colorPopoverEl.style.top = `${top}px`;
+
+    // Close on outside click or Escape
+    setTimeout(() => {
+        document.addEventListener('click', _colorPopoverOutsideHandler);
+        document.addEventListener('keydown', _colorPopoverKeyHandler);
+    }, 0);
+    colorInput.focus();
+}
+
+function closeColorPopover() {
+    if (!_colorPopoverEl) return;
+    document.removeEventListener('click', _colorPopoverOutsideHandler);
+    document.removeEventListener('keydown', _colorPopoverKeyHandler);
+    try { _colorPopoverEl.remove(); } catch(e){}
+    _colorPopoverEl = null;
+}
+
+function _colorPopoverOutsideHandler(e) {
+    if (!_colorPopoverEl) return;
+    if (!_colorPopoverEl.contains(e.target)) closeColorPopover();
+}
+
+function _colorPopoverKeyHandler(e) {
+    if (e.key === 'Escape') closeColorPopover();
+}
+
+// Helper: convert rgb/known color to hex (best-effort). If input already hex, return it.
+function rgbToHex(color) {
+    try {
+        if (!color) return '#888888';
+        color = color.trim();
+        if (color.startsWith('#')) return color;
+        // Create a temporary element to compute color
+        const d = document.createElement('div'); d.style.color = color; document.body.appendChild(d);
+        const cs = getComputedStyle(d).color;
+        d.remove();
+        const m = cs.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+        if (!m) return '#888888';
+        const r = parseInt(m[1],10), g = parseInt(m[2],10), b = parseInt(m[3],10);
+        return '#' + [r,g,b].map(x=>x.toString(16).padStart(2,'0')).join('');
+    } catch(e) { return '#888888'; }
+}
+
 async function connectDrive() {
     if (!DRIVE_CLIENT_ID) { await showAlert('Falta DRIVE_CLIENT_ID en el código. Añade tu Client ID en script.js', 'Drive Client ID'); return; }
     if (!driveTokenClient) initDrive();
@@ -644,9 +724,26 @@ function renderSidebar() {
     app.tags.forEach(t => { 
         const isSelected = app.filters.tags.includes(t); 
         const el = document.createElement('div'); el.className = `folder-item ${isSelected ? 'selected' : ''}`; 
-        el.onclick = (e) => { toggleTagFilter(t, e); closeSidebarMobile(); }; 
-        el.innerHTML = `<div class="folder-left"><div class="tag-dot" style="background:${getColor(t)}"></div><span class="folder-name">${escapeHtml(t)}</span></div>`; 
-        tList.appendChild(el); 
+        el.onclick = (e) => { toggleTagFilter(t, e); closeSidebarMobile(); };
+
+        // Left side: color dot + name
+        const left = document.createElement('div'); left.className = 'folder-left';
+        const dot = document.createElement('div'); dot.className = 'tag-dot';
+        dot.style.background = app.colors[t] || getColor(t);
+        const nameSpan = document.createElement('span'); nameSpan.className = 'folder-name'; nameSpan.textContent = t;
+        left.appendChild(dot); left.appendChild(nameSpan);
+
+        // Right side: color swatch button to edit tag color
+        const swatchBtn = document.createElement('button');
+        swatchBtn.className = 'tag-color-swatch';
+        swatchBtn.title = `Cambiar color de etiqueta "${t}"`;
+        swatchBtn.setAttribute('aria-label', `Cambiar color de etiqueta ${t}`);
+        swatchBtn.style.background = app.colors[t] || getColor(t);
+        swatchBtn.addEventListener('click', (ev) => { ev.stopPropagation(); openColorPopover(t, swatchBtn); });
+
+        el.appendChild(left);
+        el.appendChild(swatchBtn);
+        tList.appendChild(el);
     }); 
     document.getElementById('clear-filters-btn').style.display = (app.filters.tags.length > 0 || document.getElementById('search-input').value || document.getElementById('filter-date-start').value) ? 'block' : 'none'; 
 }
@@ -1038,7 +1135,7 @@ function renderPrompts() {
         // Tags
         const tagContainer = document.createElement('div'); tagContainer.className = 'tags-container';
         (p.tags || []).forEach(t => {
-            const sp = document.createElement('span'); sp.className = 'tag'; sp.textContent = t; sp.style.background = getColor(t); tagContainer.appendChild(sp);
+                const sp = document.createElement('span'); sp.className = 'tag'; sp.textContent = t; sp.style.background = (app.colors && app.colors[t]) ? app.colors[t] : getColor(t); tagContainer.appendChild(sp);
         });
 
         foot.appendChild(stats);
